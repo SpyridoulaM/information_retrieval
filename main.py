@@ -7,7 +7,7 @@ print(data)
 #katharisma tou dataset apo tis eggrafes stis opoies to plot einai keno
 data = data.dropna(subset=['Plot'])
 
-#apothikeush toy kathariismenou dataset
+#apothikeush toy katharismenou dataset
 data.to_csv('cleaned_movies_dataset.csv', index=False)
 
 

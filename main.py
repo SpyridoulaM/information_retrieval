@@ -7,9 +7,8 @@ nltk.download('punkt_tab')
 import string
 data = pd.read_csv('wiki_movie_plots_deduped.csv')
 data = data.head(1000)
-print(data)
-print("perase")
 from nltk.stem import PorterStemmer
+from nltk.tokenize import word_tokenize
 stemmer = PorterStemmer()
 
 
@@ -27,7 +26,7 @@ def preprocess_text_with_stemming(text):
     text = ''.join([char for char in text if char not in string.punctuation])  
 
     #tokenize se mikra 
-    text = text.lower() 
+    text = text.lower()
     tokens = nltk.word_tokenize(text)
 
     #afairesi stopwords
@@ -40,11 +39,10 @@ def preprocess_text_with_stemming(text):
     return text
 
 data['Processed_Plot'] = data['Plot'].apply(preprocess_text_with_stemming)
-# Αφαίρεση της στήλης "Plot" και διατήρηση μόνο του "Processed_Plot"
-data = data.drop(columns=['Plot'])
+
 
 # Εμφάνιση των πρώτων γραμμών για επιβεβαίωση
-print(data.head())
+#print(data.head())
 
 
 data.to_csv('preprocessed_movies_dataset_with_stemming.csv', index=False)
@@ -63,7 +61,7 @@ for idx, row in data.iterrows():
         if doc_id not in inverted_index[word]:  # Αποφυγή διπλών εγγραφών
             inverted_index[word].append(doc_id)
 
-print(dict(list(inverted_index.items())[:10]))  # Εμφάνιση των 10 πρώτων λέξεων
+#print(dict(list(inverted_index.items())[:10]))  # Εμφάνιση των 10 πρώτων λέξεων
 #fortwsh toy eurititiou se arxeio
 import json
 
@@ -74,6 +72,46 @@ with open('inverted_index.json', 'w') as f:
 with open('inverted_index.json', 'r') as f:
     inverted_index = json.load(f)
 
+# Μηχανή αναζήτησης με CLI
+def boolean_search(query, inverted_index):
+    # Καθαρισμός και tokenization του ερωτήματος
+    query = query.lower()  # Μετατροπή σε μικρά γράμματα
+    tokens = word_tokenize(query)  # Διαίρεση σε tokens (λέξεις)
+    tokens = [token for token in tokens if token not in stopwords]
+    # Εφαρμογή stemming σε κάθε λέξη
+    stemmed_tokens = [stemmer.stem(token) for token in tokens]
+
+    
+    result_set = set()
+
+    # Αναζήτηση για AND, OR, NOT
+    if "and" in stemmed_tokens:
+        terms = [term for term in stemmed_tokens if term != "and"]
+        result_set = set(inverted_index.get(terms[0], []))
+        for term in terms[1:]:
+            result_set &= set(inverted_index.get(term, []))  # Διατομή για AND
+    elif "or" in stemmed_tokens:
+        terms = [term for term in stemmed_tokens if term != "or"]
+        for term in terms:
+            result_set |= set(inverted_index.get(term, []))  # Ένωση για OR
+    elif "not" in stemmed_tokens:
+        terms = [term for term in stemmed_tokens if term != "not"]
+        result_set = set(inverted_index.keys()) - set(inverted_index.get(terms[0], []))  # Διαφορά για NOT
+    else:
+        result_set = set(inverted_index.get(stemmed_tokens[0], []))  # Απλή αναζήτηση
+
+    return result_set
+
+
+# Απλή διεπαφή
+print("Μηχανή Αναζήτησης (CLI)")
+while True:
+    query = input("Δώστε το ερώτημα (ή 'exit' για έξοδο): ")
+    if query.lower() == "exit":
+        print("Έξοδος από τη μηχανή αναζήτησης.")
+        break
+    results = boolean_search(query, inverted_index)
+    print(f"Βρέθηκαν {len(results)} σχετικά έγγραφα: {results}")
 
 
 

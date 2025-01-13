@@ -126,26 +126,10 @@ def bm25_search(query, data):
     ranked_results = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)
     return [(idx, score) for idx, score in ranked_results if score > 0]
 
-def vsm_search(query, data):
-    # Συνδυασμός των κειμένων του dataset με το ερώτημα
-    documents = data['Processed_Plot'].tolist()
-    documents.append(preprocess_text_with_stemming(query))
 
-    # Υπολογισμός των TF-IDF διανυσμάτων
-    vectorizer = TfidfVectorizer()
-    tfidf_matrix = vectorizer.fit_transform(documents)
-
-    # Υπολογισμός της ομοιότητας συνημιτόνου
-    cosine_similarities = cosine_similarity(tfidf_matrix[-1], tfidf_matrix[:-1]).flatten()
-
-    # Ταξινόμηση των εγγράφων βάσει ομοιότητας
-    related_docs_indices = cosine_similarities.argsort()[::-1]
-
-    # Επιστροφή των δεικτών των σχετικών εγγράφων και των βαθμολογιών τους
-    return [(index, cosine_similarities[index]) for index in related_docs_indices if cosine_similarities[index] > 0]
 
 print("Μηχανή Αναζήτησης (CLI)")
-search_method = input("Επιλέξτε μέθοδο αναζήτησης ('boolean', 'tfidf', 'bm25', ή 'vsm'): ").strip().lower()
+search_method = input("Επιλέξτε μέθοδο αναζήτησης ('boolean', 'tfidf', 'bm25'): ").strip().lower()
 
 while True:
     query = input("Δώστε το ερώτημα (ή 'exit' για έξοδο): ")
@@ -174,13 +158,29 @@ while True:
             title = data.loc[idx, 'Title']
             release_year = data.loc[idx, 'Release Year']
             print(f"Έγγραφο ID: {idx}, Τίτλος: {title}, Έτος: {release_year}, Βαθμολογία BM25: {score:.4f}\n")
-    elif search_method == 'vsm':
-        results = vsm_search(query, data)
-        print(f"Βρέθηκαν {len(results)} σχετικά έγγραφα:")
-        for idx, score in results:
-            title = data.loc[idx, 'Title']
-            release_year = data.loc[idx, 'Release Year']
-            print(f"Έγγραφο ID: {idx}, Τίτλος: {title}, Έτος: {release_year}, Βαθμολογία VSM: {score:.4f}\n")
     else:
-        print("Μη έγκυρη μέθοδος αναζήτησης. Παρακαλώ επιλέξτε 'boolean', 'tfidf', 'bm25', ή 'vsm'.")
+        print("Μη έγκυρη μέθοδος αναζήτησης. Παρακαλώ επιλέξτε 'boolean', 'tfidf', 'bm25'")
         break
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

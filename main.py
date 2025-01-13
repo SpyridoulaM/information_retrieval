@@ -17,7 +17,7 @@ data = pd.read_csv('wiki_movie_plots_deduped.csv')
 data = data.head(1000)
 stemmer = PorterStemmer()
 
-# Διαγράφω τις εγγραφες οι οποίες έχουν άδειο το κομμάτι plot
+# Διαγραφή των εγγραφων οι οποίες έχουν άδειο το κομμάτι plot
 data = data.dropna(subset=['Plot'])
 
 # Αποθήκευση του καθαρισμένου αρχείου
@@ -66,9 +66,9 @@ with open('inverted_index.json', 'r') as f:
 def boolean_search(query, inverted_index):
     # Καθαρισμός και tokenization του ερωτήματος
     query = query.lower()  # Μετατροπή σε μικρά γράμματα
-    tokens = word_tokenize(query)  # Διαίρεση σε tokens (λέξεις)
+    tokens = word_tokenize(query)  # Tokenization
     tokens = [token for token in tokens if token not in stopwords]
-    #S temming σε κάθε λέξη
+    # Stemming σε κάθε λέξη
     stemmed_tokens = [stemmer.stem(token) for token in tokens]
 
     result_set = set()
@@ -85,7 +85,7 @@ def boolean_search(query, inverted_index):
             result_set |= set(inverted_index.get(term, []))  # Πράξη για OR
     elif "not" in stemmed_tokens:
         terms = [term for term in stemmed_tokens if term != "not"]
-        result_set = set(inverted_index.keys()) - set(inverted_index.get(terms[0], []))  # Διαφορά για NOT
+        result_set = set(inverted_index.keys()) - set(inverted_index.get(terms[0], []))  # Πράξη για NOT
     else:
         result_set = set(inverted_index.get(stemmed_tokens[0], []))  # Απλή αναζήτηση
 
@@ -93,7 +93,7 @@ def boolean_search(query, inverted_index):
 
 # TF-IDF Search Function
 def tfidf_search(query, data):
-    # Συνδυασμός του dataset με το ερώτημα
+    # Ένωση του dataset με το ερώτημα
     documents = data['Processed_Plot'].tolist()
     documents.append(preprocess_text_with_stemming(query))
 

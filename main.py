@@ -110,7 +110,6 @@ def tfidf_search(query, data):
     # Επιστροφή των δεικτών των εγγράφων και της ομοιότητας του καθενός
     return [(index, cosine_similarities[index]) for index in related_docs_indices if cosine_similarities[index] > 0]
 
-
 tokenized_corpus = [doc.split() for doc in data['Processed_Plot']]
 bm25 = BM25Okapi(tokenized_corpus)
 
@@ -120,8 +119,6 @@ def bm25_search(query, data):
     scores = bm25.get_scores(query_stemmed)
     ranked_results = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)
     return [(idx, score) for idx, score in ranked_results if score > 0]
-
-
 
 print("Μηχανή Αναζήτησης (CLI)")
 search_method = input("Επιλέξτε μέθοδο αναζήτησης ('boolean', 'tfidf', 'bm25'): ").strip().lower()
@@ -156,26 +153,4 @@ while True:
     else:
         print("Μη έγκυρη μέθοδος αναζήτησης. Παρακαλώ επιλέξτε 'boolean', 'tfidf', 'bm25'")
         break
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 

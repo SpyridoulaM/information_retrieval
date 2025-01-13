@@ -1,4 +1,4 @@
-#katevasma dataset
+# Κατέβασμα βιβλιοθηκών
 import pandas as pd
 import nltk
 nltk.download('stopwords')
@@ -17,34 +17,31 @@ data = pd.read_csv('wiki_movie_plots_deduped.csv')
 data = data.head(1000)
 stemmer = PorterStemmer()
 
-#katharisma tou dataset apo tis eggrafes stis opoies to plot einai keno
+# Διαγράφω τις εγγραφες οι οποίες έχουν άδειο το κομμάτι plot
 data = data.dropna(subset=['Plot'])
 
-#apothikeush toy katharismenou dataset
+# Αποθήκευση του καθαρισμένου αρχείου
 data.to_csv('cleaned_movies_dataset.csv', index=False)
 
 stopwords = nltk.corpus.stopwords.words("english")
 
 def preprocess_text_with_stemming(text):
-    #afairesi eidikwn xaraktirwn
+    # Αφαίρεση ειδικών χαρακτήρων
     text = ''.join([char for char in text if char not in string.punctuation])  
-    #tokenize se mikra 
+    # Μετατροπή σε μικρά και tokenization
     text = text.lower()
     tokens = nltk.word_tokenize(text)
-    #afairesi stopwords
+    # Αφαίρεση stopwords
     tokens = [token for token in tokens if token not in stopwords]
-    #stemming
+    # Stemming
     tokens = [stemmer.stem(token) for token in tokens]
-    #afairesi pollaplwn kenwn
+    # Αφαίρεση πολλαπλών κενών
     text = " ".join(tokens)
     return text
 
 data['Processed_Plot'] = data['Plot'].apply(preprocess_text_with_stemming)
 
-# Εμφάνιση των πρώτων γραμμών για επιβεβαίωση
-# print(data.head())
-
-#apothikeush toy katharismenou dataset
+# Αποθήκευση του καθαρισμένου dataset
 data.to_csv('preprocessed_movies_dataset_with_stemming.csv', index=False)
 
 # Δημιουργία δομής ανεστραμμένου ευρετηρίου
@@ -58,12 +55,10 @@ for idx, row in data.iterrows():
         if doc_id not in inverted_index[word]:  # Αποφυγή διπλών εγγραφών
             inverted_index[word].append(doc_id)
 
-# print(dict(list(inverted_index.items())[:10]))  # Εμφάνιση των 10 πρώτων λέξεων
-#fortwsh toy eurititiou se arxeio
+# Εγγραφή του ευρετηρίου σε αρχείο
 with open('inverted_index.json', 'w') as f:
     json.dump(inverted_index, f)
 
-#
 with open('inverted_index.json', 'r') as f:
     inverted_index = json.load(f)
 
@@ -73,7 +68,7 @@ def boolean_search(query, inverted_index):
     query = query.lower()  # Μετατροπή σε μικρά γράμματα
     tokens = word_tokenize(query)  # Διαίρεση σε tokens (λέξεις)
     tokens = [token for token in tokens if token not in stopwords]
-    # Εφαρμογή stemming σε κάθε λέξη
+    #S temming σε κάθε λέξη
     stemmed_tokens = [stemmer.stem(token) for token in tokens]
 
     result_set = set()
@@ -83,11 +78,11 @@ def boolean_search(query, inverted_index):
         terms = [term for term in stemmed_tokens if term != "and"]
         result_set = set(inverted_index.get(terms[0], []))
         for term in terms[1:]:
-            result_set &= set(inverted_index.get(term, []))  # Διατομή για AND
+            result_set &= set(inverted_index.get(term, []))  # Πράξη για AND
     elif "or" in stemmed_tokens:
         terms = [term for term in stemmed_tokens if term != "or"]
         for term in terms:
-            result_set |= set(inverted_index.get(term, []))  # Ένωση για OR
+            result_set |= set(inverted_index.get(term, []))  # Πράξη για OR
     elif "not" in stemmed_tokens:
         terms = [term for term in stemmed_tokens if term != "not"]
         result_set = set(inverted_index.keys()) - set(inverted_index.get(terms[0], []))  # Διαφορά για NOT
@@ -98,7 +93,7 @@ def boolean_search(query, inverted_index):
 
 # TF-IDF Search Function
 def tfidf_search(query, data):
-    # Συνδυασμός των κειμένων του dataset με το ερώτημα
+    # Συνδυασμός του dataset με το ερώτημα
     documents = data['Processed_Plot'].tolist()
     documents.append(preprocess_text_with_stemming(query))
 
@@ -106,13 +101,13 @@ def tfidf_search(query, data):
     vectorizer = TfidfVectorizer()
     tfidf_matrix = vectorizer.fit_transform(documents)
 
-    # Υπολογισμός της ομοιότητας συνημιτόνου
+    # Υπολογισμός του cosine similarity
     cosine_similarities = cosine_similarity(tfidf_matrix[-1], tfidf_matrix[:-1]).flatten()
 
     # Ταξινόμηση των εγγράφων βάσει ομοιότητας
     related_docs_indices = cosine_similarities.argsort()[::-1]
 
-    # Επιστροφή των δεικτών των σχετικών εγγράφων και των βαθμολογιών τους
+    # Επιστροφή των δεικτών των εγγράφων και της ομοιότητας του καθενός
     return [(index, cosine_similarities[index]) for index in related_docs_indices if cosine_similarities[index] > 0]
 
 

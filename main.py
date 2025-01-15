@@ -205,7 +205,6 @@ def user_choice():
     elif choice == '2':
         queries = load_qry_file('CISI.QRY')
         relevance_info = load_rel_file('CISI.REL')
-        documents = load_doc_file('CISI.ALL')
 
         def evaluate_search_results(query_id, retrieved_docs, relevance_info):
             relevant_docs = set(relevance_info.get(query_id, []))

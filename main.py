@@ -42,7 +42,6 @@ def preprocess_text_with_stemming(text):
     text = " ".join(tokens)
     return text
 
-
 data['Processed_Plot'] = data['Plot'].apply(preprocess_text_with_stemming)
 
 # Αποθήκευση του καθαρισμένου dataset
@@ -62,7 +61,7 @@ for idx, row in data.iterrows():
 # Εγγραφή του ευρετηρίου σε αρχείο
 with open('inverted_index.json', 'w') as f:
     json.dump(inverted_index, f)
-
+# Φόρτωση του ευρετηρίου σε αρχείο
 with open('inverted_index.json', 'r') as f:
     inverted_index = json.load(f)
 

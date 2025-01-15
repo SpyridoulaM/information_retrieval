@@ -114,9 +114,13 @@ tokenized_corpus = [doc.split() for doc in data['Processed_Plot']]
 bm25 = BM25Okapi(tokenized_corpus)
 
 def bm25_search(query, data):
+    #Tokenization
     query_tokens = word_tokenize(query.lower())
+    #Stemming και φιλτράρισμα για stop words
     query_stemmed = [stemmer.stem(token) for token in query_tokens if token not in stopwords]
+    #Υπολογισμός BM25 βαθμολογίας
     scores = bm25.get_scores(query_stemmed)
+    #Ταξινόμηση των εγγράφων βάσει της βαθμολογίας
     ranked_results = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)
     return [(idx, score) for idx, score in ranked_results if score > 0]
 

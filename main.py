@@ -170,9 +170,7 @@ def user_choice():
     if choice == '1':
         print("Μηχανή Αναζήτησης (CLI)")
         search_method = input("Επιλέξτε μέθοδο αναζήτησης ('boolean', 'tfidf', 'bm25'): ").strip().lower()
-
-        documents = load_doc_file('CISI.ALL')  # Load documents for displaying actual content
-
+        
         while True:
             query = input("Δώστε το ερώτημα (ή 'exit' για έξοδο): ")
             if query.lower() == "exit":
@@ -183,20 +181,23 @@ def user_choice():
                 results = boolean_search(query, inverted_index)
                 print(f"Βρέθηκαν {len(results)} σχετικά έγγραφα:")
                 for idx in results:
-                    doc_text = documents.get(idx, "Δεν βρέθηκε περιεχόμενο")
-                    print(f"Έγγραφο ID: {idx}, Περιεχόμενο: {doc_text[:200]}...\n")  # Display a snippet of the document
+                    title = data.loc[idx, 'Title']
+                    release_year = data.loc[idx, 'Release Year']
+                    print(f"Έγγραφο ID: {idx}, Τίτλος: {title}, Έτος: {release_year}\n")
             elif search_method == 'tfidf':
                 results = tfidf_search(query, data)
                 print(f"Βρέθηκαν {len(results)} σχετικά έγγραφα:")
                 for idx, score in results:
-                    doc_text = documents.get(idx, "Δεν βρέθηκε περιεχόμενο")
-                    print(f"Έγγραφο ID: {idx}, Βαθμολογία TF-IDF: {score:.4f}, Περιεχόμενο: {doc_text[:200]}...\n")
+                    title = data.loc[idx, 'Title']
+                    release_year = data.loc[idx, 'Release Year']
+                    print(f"Έγγραφο ID: {idx}, Τίτλος: {title}, Έτος: {release_year}, Βαθμολογία TF-IDF: {score:.4f}\n")
             elif search_method == 'bm25':
                 results = bm25_search(query, data)
                 print(f"Βρέθηκαν {len(results)} σχετικά έγγραφα:")
                 for idx, score in results:
-                    doc_text = documents.get(idx, "Δεν βρέθηκε περιεχόμενο")
-                    print(f"Έγγραφο ID: {idx}, Βαθμολογία BM25: {score:.4f}, Περιεχόμενο: {doc_text[:200]}...\n")
+                    title = data.loc[idx, 'Title']
+                    release_year = data.loc[idx, 'Release Year']
+                    print(f"Έγγραφο ID: {idx}, Τίτλος: {title}, Έτος: {release_year}, Βαθμολογία BM25: {score:.4f}\n")
             else:
                 print("Μη έγκυρη μέθοδος αναζήτησης. Παρακαλώ επιλέξτε 'boolean', 'tfidf', 'bm25'")
                 break
@@ -205,41 +206,77 @@ def user_choice():
         queries = load_qry_file('CISI.QRY')
         relevance_info = load_rel_file('CISI.REL')
         documents = load_doc_file('CISI.ALL')
-            
+
         def evaluate_search_results(query_id, retrieved_docs, relevance_info):
             relevant_docs = set(relevance_info.get(query_id, []))
             retrieved_docs = set(retrieved_docs)
     
+            # Ελέγξτε αν υπάρχουν σχετικά έγγραφα για το τρέχον ερώτημα
+            if not relevant_docs:
+                print(f"Προειδοποίηση: Δεν βρέθηκαν σχετικά έγγραφα για το Query ID {query_id}")
+                return 0.0, 0.0, 0.0, 0.0  # Επιστροφή μηδενικών τιμών αν δεν υπάρχουν σχετικά έγγραφα
+    
             y_true = [1 if doc_id in relevant_docs else 0 for doc_id in retrieved_docs]
             y_pred = [1] * len(retrieved_docs)  
+            # Όλα τα ανακτηθέντα έγγραφα προβλέπονται ως σχετικά
 
+            # Υπολογισμός Ακρίβειας, Ανάκλησης και F1
             precision = precision_score(y_true, y_pred, zero_division=0) if y_true else 0.0
             recall = recall_score(y_true, y_pred, zero_division=0) if y_true else 0.0
             f1 = f1_score(y_true, y_pred, zero_division=0) if y_true else 0.0
-    
-            return precision, recall, f1
-       
-        def mean_average_precision(queries, relevance_info, search_function):
-            average_precisions = []
-            for query_id, query_text in queries.items():
-                relevant_docs = relevance_info.get(query_id, [])
-                retrieved_docs = search_function(query_text, inverted_index)
-        
-                y_true = [1 if doc_id in relevant_docs else 0 for doc_id in retrieved_docs]
-                y_pred = [1] * len(retrieved_docs)  
 
-                ap = average_precision_score(y_true, y_pred) if relevant_docs else 0.0
-                average_precisions.append(ap)    
+            # Υπολογισμός Μέσης Ακρίβειας (AP)
+            ap = average_precision_score(y_true, [1] * len(retrieved_docs)) if relevant_docs else 0.0
+    
+            return precision, recall, f1, ap
+
+
+        def evaluate_all_queries(queries, relevance_info, data, search_method):
+            total_precision = 0
+            total_recall = 0
+            total_f1 = 0
+            total_ap = 0
+            num_queries = len(queries)
+
+            for query_id, query_text in queries.items():
+                if search_method == 'boolean':
+                    retrieved_docs = list(boolean_search(query_text, inverted_index))
+                elif search_method == 'tfidf':
+                    retrieved_docs = [idx for idx, _ in tfidf_search(query_text, data)]
+                elif search_method == 'bm25':
+                    retrieved_docs = [idx for idx, _ in bm25_search(query_text, data)]
+                else:
+                    print("Μη έγκυρη μέθοδος αναζήτησης.")
+                    continue
+
+                precision, recall, f1, ap = evaluate_search_results(query_id, retrieved_docs, relevance_info)
                 
-            return sum(average_precisions) / len(average_precisions) if average_precisions else 0.0
+                # Εκτύπωση αποτελεσμάτων για αυτό το ερώτημα
+                print(f"Query ID: {query_id}")
+                print(f"Ακρίβεια: {precision:.4f}, Ανάκληση: {recall:.4f}, F1-Score: {f1:.4f}, Μέση Ακρίβεια (AP): {ap:.4f}")
+                print("-" * 50)
+
+                total_precision += precision
+                total_recall += recall
+                total_f1 += f1
+                total_ap += ap
+
+            # Υπολογισμός και εκτύπωση των συνολικών αποτελεσμάτων
+            mean_precision = total_precision / num_queries
+            mean_recall = total_recall / num_queries
+            mean_f1 = total_f1 / num_queries
+            mean_ap = total_ap / num_queries
+
+            print("\nΣυνολική Αξιολόγηση:")
+            print(f"Μέση Ακρίβεια: {mean_precision:.4f}")
+            print(f"Μέση Ανάκληση: {mean_recall:.4f}")
+            print(f"Μέσος Όρος F1-Score: {mean_f1:.4f}")
+            print(f"Μέση Ακρίβεια (MAP): {mean_ap:.4f}")
+
+        # Επιλέξτε τη μέθοδο αναζήτησης (μπορεί να είναι 'boolean', 'tfidf', ή 'bm25')
+        search_method = input("Επιλέξτε μέθοδο αναζήτησης ('boolean', 'tfidf', 'bm25'): ").strip().lower()
+        evaluate_all_queries(queries, relevance_info, data, search_method)
         
-        for query_id, query_text in queries.items():
-            retrieved_docs = boolean_search(query_text, inverted_index)
-            precision, recall, f1 = evaluate_search_results(query_id, retrieved_docs, relevance_info)
-            print(f"Ερώτημα ID {query_id}: Ακρίβεια: {precision:.4f}, Ανάκληση: {recall:.4f}, F1-Score: {f1:.4f}")
-        
-        map_score = mean_average_precision(queries, relevance_info, boolean_search)
-        print(f"Μέση ακρίβεια (MAP): {map_score:.4f}")
     else:
         print("Ακατάλληλη επιλογή, προσπαθήστε ξανά.")
         user_choice()

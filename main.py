@@ -1,18 +1,19 @@
-# Κατέβασμα βιβλιοθηκών
 import pandas as pd
 import nltk
-nltk.download('stopwords')
-nltk.download('punkt')
-nltk.download('punkt_tab')
-import string
 from nltk.stem import PorterStemmer
 from nltk.tokenize import word_tokenize
 from collections import defaultdict
 import json
+import string
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.metrics import precision_score, recall_score, f1_score, average_precision_score
 from rank_bm25 import BM25Okapi
 
+nltk.download('stopwords')
+nltk.download('punkt')
+
+# Φόρτωση των δεδομένων
 data = pd.read_csv('wiki_movie_plots_deduped.csv')
 data = data.head(1000)
 stemmer = PorterStemmer()
@@ -23,11 +24,13 @@ data = data.dropna(subset=['Plot'])
 # Αποθήκευση του καθαρισμένου αρχείου
 data.to_csv('cleaned_movies_dataset.csv', index=False)
 
+# Καθορισμός των stopwords
 stopwords = nltk.corpus.stopwords.words("english")
 
+# Λειτουργία προετοιμασίας κειμένου με Stemming
 def preprocess_text_with_stemming(text):
     # Αφαίρεση ειδικών χαρακτήρων
-    text = ''.join([char for char in text if char not in string.punctuation])  
+    text = ''.join([char for char in text if char not in string.punctuation])
     # Μετατροπή σε μικρά και tokenization
     text = text.lower()
     tokens = nltk.word_tokenize(text)
@@ -48,50 +51,106 @@ data.to_csv('preprocessed_movies_dataset_with_stemming.csv', index=False)
 inverted_index = defaultdict(list)
 
 # Κατασκευή του ευρετηρίου
-for idx, row in data.iterrows():
-    doc_id = idx  # Το ID του εγγράφου (μπορεί να είναι η γραμμή)
-    words = row['Processed_Plot'].split()  # Διάσπαση κειμένου σε λέξεις
+for idx, row in data.iterrows(): 
+    doc_id = idx # Το ID του εγγράφου (μπορεί να είναι η γραμμή)
+    words = row['Processed_Plot'].split() # Διάσπαση κειμένου σε λέξεις
     for word in words:
-        if doc_id not in inverted_index[word]:  # Αποφυγή διπλών εγγραφών
+        if doc_id not in inverted_index[word]: # Αποφυγή διπλών εγγραφών
             inverted_index[word].append(doc_id)
 
 # Εγγραφή του ευρετηρίου σε αρχείο
 with open('inverted_index.json', 'w') as f:
     json.dump(inverted_index, f)
-
+# Φόρτωση του ευρετηρίου σε αρχείο
 with open('inverted_index.json', 'r') as f:
     inverted_index = json.load(f)
 
-# Μηχανή αναζήτησης με CLI
+def load_qry_file(filepath):
+    queries = {}
+    with open(filepath, 'r') as file:
+        lines = file.readlines()
+        current_query_id = None
+        current_query_text = ""
+        for line in lines:
+            if line.startswith(".I"):
+                if current_query_id is not None:
+                    queries[current_query_id] = current_query_text.strip()
+                current_query_id = int(line.split()[1])
+                current_query_text = ""
+            elif line.startswith(".W"):
+                continue
+            else:
+                current_query_text += line.strip() + " "
+        if current_query_id is not None:
+            queries[current_query_id] = current_query_text.strip()
+    # Έλεγχος αν το queries είναι άδειο
+    if not queries:
+        print("Σφάλμα: Το αρχείο ερωτημάτων είναι κενό ή δεν φορτώθηκε σωστά.")
+    else:
+        print(f"Φόρτωση ολοκληρώθηκε: {len(queries)} ερωτήματα.")
+    return queries
+
+def load_rel_file(filepath):
+    relevance_info = {}
+    with open(filepath, 'r') as file:
+        lines = file.readlines()
+        for line in lines:
+            parts = line.strip().split()
+            if len(parts) >= 2:
+                query_id = int(parts[0])
+                doc_id = int(parts[1])
+                if query_id not in relevance_info:
+                    relevance_info[query_id] = []
+                relevance_info[query_id].append(doc_id)
+    # Έλεγχος αν το relevance_info είναι άδειο
+    if not relevance_info:
+        print("Σφάλμα: Το αρχείο σχετικών εγγράφων είναι κενό ή δεν φορτώθηκε σωστά.")
+    else:
+        print(f"Φόρτωση ολοκληρώθηκε: {len(relevance_info)} ερωτήματα με σχετικές εγγραφές.")
+    return relevance_info
+
+def load_doc_file(file_path):
+    documents = {}
+    with open(file_path, 'r') as file:
+        content = file.read().strip().split(".I")
+        for item in content[1:]:
+            lines = item.strip().split("\n")
+            try:
+                doc_id = int(lines[0].strip())  
+            except ValueError:
+                continue
+            doc_text = " ".join(line.strip() for line in lines[1:])
+            documents[doc_id] = doc_text
+    return documents
+
 def boolean_search(query, inverted_index):
     # Καθαρισμός και tokenization του ερωτήματος
-    query = query.lower()  # Μετατροπή σε μικρά γράμματα
-    tokens = word_tokenize(query)  # Tokenization
+    query = query.lower() # Μετατροπή σε μικρά γράμματα
+    tokens = word_tokenize(query) # Tokenization
     tokens = [token for token in tokens if token not in stopwords]
     # Stemming σε κάθε λέξη
     stemmed_tokens = [stemmer.stem(token) for token in tokens]
-
+    
     result_set = set()
-
     # Αναζήτηση για AND, OR, NOT
     if "and" in stemmed_tokens:
         terms = [term for term in stemmed_tokens if term != "and"]
         result_set = set(inverted_index.get(terms[0], []))
         for term in terms[1:]:
-            result_set &= set(inverted_index.get(term, []))  # Πράξη για AND
+            result_set &= set(inverted_index.get(term, []))
     elif "or" in stemmed_tokens:
         terms = [term for term in stemmed_tokens if term != "or"]
         for term in terms:
-            result_set |= set(inverted_index.get(term, []))  # Πράξη για OR
+            result_set |= set(inverted_index.get(term, []))
     elif "not" in stemmed_tokens:
         terms = [term for term in stemmed_tokens if term != "not"]
-        result_set = set(inverted_index.keys()) - set(inverted_index.get(terms[0], []))  # Πράξη για NOT
+        result_set = set(inverted_index.keys()) - set(inverted_index.get(terms[0], []))
     else:
-        result_set = set(inverted_index.get(stemmed_tokens[0], []))  # Απλή αναζήτηση
+        result_set = set(inverted_index.get(stemmed_tokens[0], [])) # Απλή αναζήτηση
 
     return result_set
 
-# TF-IDF Search Function
+# TF-IDF Search
 def tfidf_search(query, data):
     # Ένωση του dataset με το ερώτημα
     documents = data['Processed_Plot'].tolist()
@@ -124,37 +183,131 @@ def bm25_search(query, data):
     ranked_results = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)
     return [(idx, score) for idx, score in ranked_results if score > 0]
 
-print("Μηχανή Αναζήτησης (CLI)")
-search_method = input("Επιλέξτε μέθοδο αναζήτησης ('boolean', 'tfidf', 'bm25'): ").strip().lower()
+def create_inverted_index(data):
+    inverted_index = defaultdict(list)
+    for idx, row in data.iterrows(): 
+        words = row['Processed_Plot'].split()
+        for word in words:
+            if idx not in inverted_index[word]:
+                inverted_index[word].append(idx)
+    return inverted_index
 
-while True:
-    query = input("Δώστε το ερώτημα (ή 'exit' για έξοδο): ")
-    if query.lower() == "exit":
-        print("Έξοδος από τη μηχανή αναζήτησης.")
-        break
+def user_choice():
+    print("Επιλέξτε μια επιλογή:")
+    print("1: Αναζήτηση")
+    print("2: Δοκιμή και υπολογισμός ακρίβειας, ανάκλησης, F1-score και MAP")
+    choice = input("Επιλέξτε 1 ή 2: ")
 
-    if search_method == 'boolean': 
-        results = boolean_search(query, inverted_index)
-        print(f"Βρέθηκαν {len(results)} σχετικά έγγραφα:")
-        for idx in results:
-            title = data.loc[idx, 'Title']
-            release_year = data.loc[idx, 'Release Year']
-            print(f"Έγγραφο ID: {idx}, Τίτλος: {title}, Έτος: {release_year}\n")
-    elif search_method == 'tfidf':
-        results = tfidf_search(query, data)
-        print(f"Βρέθηκαν {len(results)} σχετικά έγγραφα:")
-        for idx, score in results:
-            title = data.loc[idx, 'Title']
-            release_year = data.loc[idx, 'Release Year']
-            print(f"Έγγραφο ID: {idx}, Τίτλος: {title}, Έτος: {release_year}, Βαθμολογία TF-IDF: {score:.4f}\n")
-    elif search_method == 'bm25':
-        results = bm25_search(query, data)
-        print(f"Βρέθηκαν {len(results)} σχετικά έγγραφα:")
-        for idx, score in results:
-            title = data.loc[idx, 'Title']
-            release_year = data.loc[idx, 'Release Year']
-            print(f"Έγγραφο ID: {idx}, Τίτλος: {title}, Έτος: {release_year}, Βαθμολογία BM25: {score:.4f}\n")
+    if choice == '1':
+        print("Μηχανή Αναζήτησης (CLI)")
+        search_method = input("Επιλέξτε μέθοδο αναζήτησης ('boolean', 'tfidf', 'bm25'): ").strip().lower()
+        
+        while True:
+            query = input("Δώστε το ερώτημα (ή 'exit' για έξοδο): ")
+            if query.lower() == "exit":
+                print("Έξοδος από τη μηχανή αναζήτησης.")
+                break
+
+            if search_method == 'boolean': 
+                results = boolean_search(query, inverted_index)
+                print(f"Βρέθηκαν {len(results)} σχετικά έγγραφα:")
+                for idx in results:
+                    title = data.loc[idx, 'Title']
+                    release_year = data.loc[idx, 'Release Year']
+                    print(f"Έγγραφο ID: {idx}, Τίτλος: {title}, Έτος: {release_year}\n")
+            elif search_method == 'tfidf':
+                results = tfidf_search(query, data)
+                print(f"Βρέθηκαν {len(results)} σχετικά έγγραφα:")
+                for idx, score in results:
+                    title = data.loc[idx, 'Title']
+                    release_year = data.loc[idx, 'Release Year']
+                    print(f"Έγγραφο ID: {idx}, Τίτλος: {title}, Έτος: {release_year}, Βαθμολογία TF-IDF: {score:.4f}\n")
+            elif search_method == 'bm25':
+                results = bm25_search(query, data)
+                print(f"Βρέθηκαν {len(results)} σχετικά έγγραφα:")
+                for idx, score in results:
+                    title = data.loc[idx, 'Title']
+                    release_year = data.loc[idx, 'Release Year']
+                    print(f"Έγγραφο ID: {idx}, Τίτλος: {title}, Έτος: {release_year}, Βαθμολογία BM25: {score:.4f}\n")
+            else:
+                print("Μη έγκυρη μέθοδος αναζήτησης. Παρακαλώ επιλέξτε 'boolean', 'tfidf', 'bm25'")
+                break
+            
+    elif choice == '2':
+        queries = load_qry_file('CISI.QRY')
+        relevance_info = load_rel_file('CISI.REL')
+        def evaluate_search_results(query_id, retrieved_docs, relevance_info):
+            relevant_docs = set(relevance_info.get(query_id, []))
+            retrieved_docs = set(retrieved_docs)
+            
+            # Ελέγξτε αν υπάρχουν σχετικά έγγραφα για το τρέχον ερώτημα
+            if not relevant_docs:
+                return 0.0, 0.0, 0.0, 0.0  # Επιστροφή μηδενικών τιμών αν δεν υπάρχουν σχετικά έγγραφα
+        
+            # Υπολογισμός Ακρίβειας, Ανάκλησης και F1 μόνο αν υπάρχουν ανακτηθέντα έγγραφα
+            if not retrieved_docs:
+                return 0.0, 0.0, 0.0, 0.0  # Επιστροφή μηδενικών τιμών αν δεν υπάρχουν ανακτηθέντα έγγραφα
+        
+            y_true = [1 if doc_id in relevant_docs else 0 for doc_id in retrieved_docs]
+            y_pred = [1] * len(retrieved_docs)  # Όλα τα ανακτηθέντα έγγραφα προβλέπονται ως σχετικά
+            
+            # Υπολογισμός Ακρίβειας, Ανάκλησης και F1 μόνο αν υπάρχουν σχετικά έγγραφα
+            precision = precision_score(y_true, y_pred, zero_division=0) if any(y_true) else 0.0
+            recall = recall_score(y_true, y_pred, zero_division=0) if any(y_true) else 0.0
+            f1 = f1_score(y_true, y_pred, zero_division=0) if any(y_true) else 0.0
+            
+            # Υπολογισμός Μέσης Ακρίβειας (AP) μόνο αν υπάρχουν ανακτηθέντα έγγραφα
+            ap = average_precision_score(y_true, [1] * len(retrieved_docs)) if any(y_true) else 0.0
+        
+            return precision, recall, f1, ap
+
+        def evaluate_all_queries(queries, relevance_info, data, search_method):
+            total_precision = 0
+            total_recall = 0
+            total_f1 = 0
+            total_ap = 0
+            num_queries = len(queries)
+
+            for query_id, query_text in queries.items():
+                if search_method == 'boolean':
+                    inverted_index = create_inverted_index(data)
+                    retrieved_docs = list(boolean_search(query_text, inverted_index))
+                elif search_method == 'tfidf':
+                    retrieved_docs = [idx for idx, _ in tfidf_search(query_text, data)]
+                elif search_method == 'bm25':
+                    retrieved_docs = [idx for idx, _ in bm25_search(query_text, data)]
+                else:
+                    print("Μη έγκυρη μέθοδος αναζήτησης.")
+                    continue
+
+                precision, recall, f1, ap = evaluate_search_results(query_id, retrieved_docs, relevance_info)
+
+                total_precision += precision
+                total_recall += recall
+                total_f1 += f1
+                total_ap += ap
+
+            # Υπολογισμός και εκτύπωση των συνολικών αποτελεσμάτων
+            mean_precision = total_precision / num_queries
+            mean_recall = total_recall / num_queries
+            mean_f1 = total_f1 / num_queries
+            mean_ap = total_ap / num_queries
+
+            print(f"\nΣυνολική Αξιολόγηση {search_method}:")
+            print(f"Μέση Ακρίβεια: {mean_precision:.4f}")
+            print(f"Μέση Ανάκληση: {mean_recall:.4f}")
+            print(f"Μέσος Όρος F1-Score: {mean_f1:.4f}")
+            print(f"Μέση Ακρίβεια (MAP): {mean_ap:.4f}")
+
+        search_method = "boolean"
+        evaluate_all_queries(queries, relevance_info, data, search_method)
+        search_method = "tfidf"
+        evaluate_all_queries(queries, relevance_info, data, search_method)
+        search_method = "bm25"
+        evaluate_all_queries(queries, relevance_info, data, search_method)
+        
     else:
-        print("Μη έγκυρη μέθοδος αναζήτησης. Παρακαλώ επιλέξτε 'boolean', 'tfidf', 'bm25'")
-        break
+        print("Ακατάλληλη επιλογή, προσπαθήστε ξανά.")
+        user_choice()
 
+user_choice()

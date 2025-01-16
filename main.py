@@ -204,11 +204,12 @@ def user_choice():
     elif choice == '2':
         queries = load_qry_file('CISI.QRY')
         relevance_info = load_rel_file('CISI.REL')
-
+        #print(f"relevance_info: {relevance_info}")
         def evaluate_search_results(query_id, retrieved_docs, relevance_info):
             relevant_docs = set(relevance_info.get(query_id, []))
             retrieved_docs = set(retrieved_docs)
-    
+            #print(f"Retrieved Docs: {retrieved_docs}")
+            #print(f"Relevant Docs: {relevant_docs}")
             # Ελέγξτε αν υπάρχουν σχετικά έγγραφα για το τρέχον ερώτημα
             if not relevant_docs:
                 print(f"Προειδοποίηση: Δεν βρέθηκαν σχετικά έγγραφα για το Query ID {query_id}")

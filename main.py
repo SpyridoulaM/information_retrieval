@@ -150,7 +150,7 @@ def boolean_search(query, inverted_index):
 
     return result_set
 
-# TF-IDF Search Function
+# TF-IDF Search
 def tfidf_search(query, data):
     # Ένωση του dataset με το ερώτημα
     documents = data['Processed_Plot'].tolist()

@@ -65,25 +65,48 @@ with open('inverted_index.json', 'w') as f:
 with open('inverted_index.json', 'r') as f:
     inverted_index = json.load(f)
 
-def load_qry_file(file_path):
+def load_qry_file(filepath):
     queries = {}
-    with open(file_path, 'r') as file:
-        content = file.read().strip().split(".I")
-        for item in content[1:]:
-            lines = item.strip().split("\n")
-            query_id = int(lines[0].strip())
-            query_text = " ".join(line.strip() for line in lines[2:])
-            queries[query_id] = query_text
+    with open(filepath, 'r') as file:
+        lines = file.readlines()
+        current_query_id = None
+        current_query_text = ""
+        for line in lines:
+            if line.startswith(".I"):
+                if current_query_id is not None:
+                    queries[current_query_id] = current_query_text.strip()
+                current_query_id = int(line.split()[1])
+                current_query_text = ""
+            elif line.startswith(".W"):
+                continue
+            else:
+                current_query_text += line.strip() + " "
+        if current_query_id is not None:
+            queries[current_query_id] = current_query_text.strip()
+    # Έλεγχος αν το queries είναι άδειο
+    if not queries:
+        print("Σφάλμα: Το αρχείο ερωτημάτων είναι κενό ή δεν φορτώθηκε σωστά.")
+    else:
+        print(f"Φόρτωση ολοκληρώθηκε: {len(queries)} ερωτήματα.")
     return queries
 
-def load_rel_file(file_path):
-    relevance_info = defaultdict(list)
-    with open(file_path, 'r') as file:
-        for line in file:
-            parts = line.split()
-            query_id = int(parts[0])
-            doc_id = int(parts[1])
-            relevance_info[query_id].append(doc_id)
+def load_rel_file(filepath):
+    relevance_info = {}
+    with open(filepath, 'r') as file:
+        lines = file.readlines()
+        for line in lines:
+            parts = line.strip().split()
+            if len(parts) >= 2:
+                query_id = int(parts[0])
+                doc_id = int(parts[1])
+                if query_id not in relevance_info:
+                    relevance_info[query_id] = []
+                relevance_info[query_id].append(doc_id)
+    # Έλεγχος αν το relevance_info είναι άδειο
+    if not relevance_info:
+        print("Σφάλμα: Το αρχείο σχετικών εγγράφων είναι κενό ή δεν φορτώθηκε σωστά.")
+    else:
+        print(f"Φόρτωση ολοκληρώθηκε: {len(relevance_info)} ερωτήματα με σχετικές εγγραφές.")
     return relevance_info
 
 def load_doc_file(file_path):
@@ -160,6 +183,15 @@ def bm25_search(query, data):
     ranked_results = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)
     return [(idx, score) for idx, score in ranked_results if score > 0]
 
+def create_inverted_index(data):
+    inverted_index = defaultdict(list)
+    for idx, row in data.iterrows(): 
+        words = row['Processed_Plot'].split()
+        for word in words:
+            if idx not in inverted_index[word]:
+                inverted_index[word].append(idx)
+    return inverted_index
+
 def user_choice():
     print("Επιλέξτε μια επιλογή:")
     print("1: Αναζήτηση")
@@ -204,31 +236,30 @@ def user_choice():
     elif choice == '2':
         queries = load_qry_file('CISI.QRY')
         relevance_info = load_rel_file('CISI.REL')
-        #print(f"relevance_info: {relevance_info}")
         def evaluate_search_results(query_id, retrieved_docs, relevance_info):
             relevant_docs = set(relevance_info.get(query_id, []))
             retrieved_docs = set(retrieved_docs)
-            #print(f"Retrieved Docs: {retrieved_docs}")
-            #print(f"Relevant Docs: {relevant_docs}")
+            
             # Ελέγξτε αν υπάρχουν σχετικά έγγραφα για το τρέχον ερώτημα
             if not relevant_docs:
-                print(f"Προειδοποίηση: Δεν βρέθηκαν σχετικά έγγραφα για το Query ID {query_id}")
                 return 0.0, 0.0, 0.0, 0.0  # Επιστροφή μηδενικών τιμών αν δεν υπάρχουν σχετικά έγγραφα
-    
+        
+            # Υπολογισμός Ακρίβειας, Ανάκλησης και F1 μόνο αν υπάρχουν ανακτηθέντα έγγραφα
+            if not retrieved_docs:
+                return 0.0, 0.0, 0.0, 0.0  # Επιστροφή μηδενικών τιμών αν δεν υπάρχουν ανακτηθέντα έγγραφα
+        
             y_true = [1 if doc_id in relevant_docs else 0 for doc_id in retrieved_docs]
-            y_pred = [1] * len(retrieved_docs)  
-            # Όλα τα ανακτηθέντα έγγραφα προβλέπονται ως σχετικά
-
-            # Υπολογισμός Ακρίβειας, Ανάκλησης και F1
-            precision = precision_score(y_true, y_pred, zero_division=0) if y_true else 0.0
-            recall = recall_score(y_true, y_pred, zero_division=0) if y_true else 0.0
-            f1 = f1_score(y_true, y_pred, zero_division=0) if y_true else 0.0
-
-            # Υπολογισμός Μέσης Ακρίβειας (AP)
-            ap = average_precision_score(y_true, [1] * len(retrieved_docs)) if relevant_docs else 0.0
-    
+            y_pred = [1] * len(retrieved_docs)  # Όλα τα ανακτηθέντα έγγραφα προβλέπονται ως σχετικά
+            
+            # Υπολογισμός Ακρίβειας, Ανάκλησης και F1 μόνο αν υπάρχουν σχετικά έγγραφα
+            precision = precision_score(y_true, y_pred, zero_division=0) if any(y_true) else 0.0
+            recall = recall_score(y_true, y_pred, zero_division=0) if any(y_true) else 0.0
+            f1 = f1_score(y_true, y_pred, zero_division=0) if any(y_true) else 0.0
+            
+            # Υπολογισμός Μέσης Ακρίβειας (AP) μόνο αν υπάρχουν ανακτηθέντα έγγραφα
+            ap = average_precision_score(y_true, [1] * len(retrieved_docs)) if any(y_true) else 0.0
+        
             return precision, recall, f1, ap
-
 
         def evaluate_all_queries(queries, relevance_info, data, search_method):
             total_precision = 0
@@ -239,6 +270,7 @@ def user_choice():
 
             for query_id, query_text in queries.items():
                 if search_method == 'boolean':
+                    inverted_index = create_inverted_index(data)
                     retrieved_docs = list(boolean_search(query_text, inverted_index))
                 elif search_method == 'tfidf':
                     retrieved_docs = [idx for idx, _ in tfidf_search(query_text, data)]
@@ -249,11 +281,6 @@ def user_choice():
                     continue
 
                 precision, recall, f1, ap = evaluate_search_results(query_id, retrieved_docs, relevance_info)
-                
-                # Εκτύπωση αποτελεσμάτων για αυτό το ερώτημα
-                print(f"Query ID: {query_id}")
-                print(f"Ακρίβεια: {precision:.4f}, Ανάκληση: {recall:.4f}, F1-Score: {f1:.4f}, Μέση Ακρίβεια (AP): {ap:.4f}")
-                print("-" * 50)
 
                 total_precision += precision
                 total_recall += recall
@@ -266,14 +293,17 @@ def user_choice():
             mean_f1 = total_f1 / num_queries
             mean_ap = total_ap / num_queries
 
-            print("\nΣυνολική Αξιολόγηση:")
+            print(f"\nΣυνολική Αξιολόγηση {search_method}:")
             print(f"Μέση Ακρίβεια: {mean_precision:.4f}")
             print(f"Μέση Ανάκληση: {mean_recall:.4f}")
             print(f"Μέσος Όρος F1-Score: {mean_f1:.4f}")
             print(f"Μέση Ακρίβεια (MAP): {mean_ap:.4f}")
 
-        # Επιλέξτε τη μέθοδο αναζήτησης (μπορεί να είναι 'boolean', 'tfidf', ή 'bm25')
-        search_method = input("Επιλέξτε μέθοδο αναζήτησης ('boolean', 'tfidf', 'bm25'): ").strip().lower()
+        search_method = "boolean"
+        evaluate_all_queries(queries, relevance_info, data, search_method)
+        search_method = "tfidf"
+        evaluate_all_queries(queries, relevance_info, data, search_method)
+        search_method = "bm25"
         evaluate_all_queries(queries, relevance_info, data, search_method)
         
     else:
